@@ -1,0 +1,259 @@
+#!/bin/bash
+
+
+#variable globales
+
+
+FICHIER_TOKEN="$HOME/.config/gitbash/env"
+firstName=""
+repoName=""
+testNum=1
+listCollaborators=()
+numJobs=0
+
+
+#arret du script si erreur
+
+
+set -euo pipefail
+
+
+
+
+#vérifier les outils
+
+
+
+
+check_outil() {
+    for outil in curl git; do
+        if ! command -v "$outil" > /dev/null 2>&1; then
+            echo "Erreur : $outil pas installe" >&2
+            exit 1
+        fi
+    done
+}
+
+
+
+
+
+
+
+
+#Control des restriction
+
+
+check_restriction() {
+
+
+   if [ ! -f "$FICHIER_TOKEN" ]; then
+    echo "Erreur : fichier du token introuvable"
+    exit 1
+   fi
+    if [ "$(stat -c %a "$FICHIER_TOKEN")" != "600" ]; then
+        echo "Erreur : le fichier n'a pas les bonnes restrictions" >&2
+        exit 1
+    else
+      #vérifier si le fichier est la
+        echo "Le fichier a les bonnes permissions"
+    fi
+}
+
+
+
+
+
+
+
+
+#Chargement du token
+
+
+
+
+source "$FICHIER_TOKEN"
+
+
+
+
+#validation du fichier , est-il vide ?
+
+
+
+
+if [ -z "$GITHUB_TOKEN" ]; then
+echo "Erreur : le token est vide" >&2
+exit 1
+fi
+
+
+
+
+#Formulaire
+application (){
+
+
+#Savoir si mon prenom ou le repo contient des espaces ou est un chaïne vide
+
+
+    while [[ $firstName =~ " " ]] || [ -z $firstName ]
+    do
+        echo "Entrez votre nom utilisateur de github (sans espace):"
+        read -r firstName
+    done
+
+
+    while [[ $repoName =~ " " ]] || [ -z $repoName ]
+    do
+        echo "Entrez le nom de votre projet github (sans espace):"
+        read -r repoName
+    done
+
+
+
+
+    while (( testNum ));do
+        echo "Entrez le nombre de jobs dans le projet :"
+        read -r numJobs
+
+
+        if ! [[ $numJobs =~ ^[0-9]{1,2}$ ]];then
+            echo "Entrée invalide"
+        else
+            testNum=0
+        fi
+    done
+
+
+    echo "Entrez le nom github des différents collaborateurs du projet :"
+    read -r listCollaborators
+
+
+    echo " $firstName a créé le projet $repoName composé de $numJobs avec $listCollaborators"
+
+
+    echo " Creation du dossier et des différents sous dossier pour chaque job et ajout des collaborateurs"
+
+
+    echo " Formulaire fonctionne "
+}
+
+
+
+
+
+
+#Creation du dépot distant
+
+
+
+
+create_Repo() {
+
+
+curl -i \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -d "{\"name\": \"$repoName\", \"auto_init\": true, \"private\": true, \"gitignore_template\": \"Nanoc\"}" \
+  https://api.github.com/user/repos
+
+
+echo "Dépôt $repoName a été créé"
+
+
+}
+
+
+
+
+#Ajout des collaborateurs
+
+
+
+
+add_collaborators(){
+   if [[ -z $1 ]]; then
+        curl -L \
+            -X PUT \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer $GITHUB_TOKEN" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        https://api.github.com/repos/$firstName/$repoName/collaborators/$1 -d '{"permission":"push"}'
+   else
+        echo "Repo sans collaborateurs"
+   fi
+echo "Ajout des collaborateurs : Fonctionne"
+
+
+}
+
+
+
+
+#Arborescence
+
+
+
+
+create_Directory(){
+
+
+        count=0
+        while (( $count <= $1 )); do
+                if (( $count < 10 ));then
+                        index="0$count"
+                else
+                        index="$count"
+                fi
+                echo "Voici mon indice$index"
+                mkdir "JOB$index"
+                touch "JOB$index/README.md"
+                count=$((count + 1))
+
+
+        done
+    echo "Creation des dossiers du dépôt : Fonctionne"
+    return
+}
+
+
+
+
+
+
+#git int commit remote push
+start_git() {
+
+
+
+
+    git clone https://$GITHUB_TOKEN@github.com/$firstName/$repoName.git
+    cd $repoName
+    create_Directory $1
+    git add .
+    git commit -m "mon messsage"
+    git push https://$GITHUB_TOKEN@github.com/$firstName/$repoName.git
+    echo " start_git : Fonctionne "
+}
+
+
+
+
+main() {
+    check_outil
+    check_restriction
+    application
+    create_Repo
+    for name in "${listCollaborators[@]}"; do
+        add_collaborators "$name"
+    done
+    start_git $numJobs
+
+
+    }
+
+
+
+
+main
